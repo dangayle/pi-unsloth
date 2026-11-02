@@ -20,7 +20,11 @@ import {
 import { findEntry, flagValue, numberFlag, tokenize } from "./unsloth/args.ts";
 import { PROVIDER_ID } from "./unsloth/catalog.ts";
 import { createUnslothProvider } from "./unsloth/provider.ts";
-import { UNSLOTH_STUDIO_URL_ENV } from "./unsloth/auth.ts";
+import {
+  UNSLOTH_STUDIO_URL_ENV,
+  probeStudio,
+  resolveTarget,
+} from "./unsloth/auth.ts";
 
 const MAX_OPTION_LENGTH = 96;
 
@@ -110,6 +114,12 @@ async function unslothCommand(args: string, ctx: ExtensionCommandContext): Promi
     const message = connectionErrorMessage(error);
     notify(ctx, message, "error");
     print(ctx, message);
+    if (message.includes("Could not connect")) {
+      await diagnoseUnreachable((detail) => {
+        notify(ctx, detail, "error");
+        print(ctx, detail);
+      });
+    }
   }
 }
 
@@ -130,15 +140,29 @@ async function configuredClient(
   if (!result) {
     notify(
       ctx,
-      `Unsloth is not configured. Run /login ${PROVIDER_ID}, or set ${UNSLOTH_STUDIO_URL_ENV}/${"UNSLOTH_API_KEY"}.`,
+      `Unsloth is not configured. Run /login ${PROVIDER_ID}, or set ${UNSLOTH_STUDIO_URL_ENV}/UNSLOTH_API_KEY.`,
       "warning",
     );
     return undefined;
   }
-  const baseUrl = studioRoot(
-    result.auth.baseUrl ?? process.env[UNSLOTH_STUDIO_URL_ENV] ?? DEFAULT_STUDIO_URL,
-  );
+  // The resolved auth already carries the base URL we deliberately chose.
+  const baseUrl = studioRoot(result.auth.baseUrl);
   return new UnslothClient({ baseUrl, apiKey: result.auth.apiKey });
+}
+
+/** Name the actual problem when the configured server cannot be reached. */
+async function diagnoseUnreachable(
+  logger: (message: string) => void,
+): Promise<void> {
+  const target = resolveTarget({
+    serverUrl: process.env[UNSLOTH_STUDIO_URL_ENV],
+    env: process.env,
+  });
+  const probe = await probeStudio(target.baseUrl);
+  const hint = target.explicit
+    ? `the target came from ${UNSLOTH_STUDIO_URL_ENV}`
+    : "that is the default; set UNSLOTH_STUDIO_URL if Unsloth runs elsewhere";
+  logger(`${probe.detail ?? `could not reach ${target.baseUrl}`} — ${hint}.`);
 }
 
 async function refreshCatalog(ctx: ExtensionCommandContext): Promise<void> {

@@ -46,9 +46,38 @@ unsloth studio --api-only -p 8899
 UNSLOTH_STUDIO_URL=http://127.0.0.1:8899 pi
 ```
 
-A non-default port needs both pieces: `UNSLOTH_STUDIO_URL` tells the plugin where the server is, and the plugin forwards it to Unsloth's own discovery helper so the token it mints matches that server. Off-machine servers additionally need `UNSLOTH_API_KEY`, since the self-issued desktop token is only ever minted for a verified loopback address.
+`UNSLOTH_STUDIO_URL` is honored exactly. Verified against a headless `unsloth studio --api-only -p 8899` instance driven by this plugin: token minting, model listing, load (53s), catalog reporting the model as loaded, a chat completion through `/v1/chat/completions` (with `reasoning_content`), and unload.
 
-Verified against a headless `unsloth studio --api-only -p 8899` instance: token minting, model listing, load (53s), catalog reporting the model as loaded, a chat completion through `/v1/chat/completions` (with `reasoning_content`), and unload.
+## How the server is chosen
+
+Which server to talk to is decided deterministically, never by a helper:
+
+1. The URL stored with `/login unsloth`.
+2. `UNSLOTH_STUDIO_URL`.
+3. `http://127.0.0.1:8888`, Unsloth's default.
+
+That order is the whole story — the plugin never lets Unsloth's own discovery pick a port. (`unsloth_cli.find_studio_server()` prefers “the server this install recorded”, so with two servers running it can answer with a port nobody asked about. It is deliberately unused.)
+
+Before a session uses the server, three things must line up:
+
+| Check | Catches |
+|---|---|
+| `GET /api/health` | A dead port, or a non-Unsloth process squatting on it. |
+| Identity proof at that exact address (Unsloth's own `verify_studio_identity`) | A different Unsloth install whose `studio.db` secret does not match. |
+| Authenticated `GET /api/inference/loaded-models` | A token the server actually rejects. |
+
+Minted tokens are cached **per base URL**, so changing `UNSLOTH_STUDIO_URL` mid-session forces a fresh mint rather than reusing a token from another server.
+
+When nothing is listening, the failure is explicit — the plugin never quietly falls back to another port:
+
+```
+$ UNSLOTH_STUDIO_URL=http://127.0.0.1:9999 pi
+Could not authenticate to http://127.0.0.1:9999: the server at that address did not
+prove the shared secret from studio.db. Start Unsloth Studio there, point
+UNSLOTH_STUDIO_URL at the right port, or set UNSLOTH_API_KEY.
+```
+
+A self-issued desktop token is only ever minted for a verified loopback address, so an off-machine server needs `UNSLOTH_API_KEY` (`unsloth studio run` prints one).
 
 ## Usage
 
@@ -72,9 +101,9 @@ Credential resolution, in order:
 
 1. An API key stored through `/login unsloth`.
 2. The `UNSLOTH_API_KEY` environment variable.
-3. A **desktop token** self-issued through Unsloth's own CLI helpers (`unsloth_cli._inference`: `find_studio_server`, `verify_studio_identity`, `_studio_token`), run from the bundled `unsloth_studio` Python venv. Tokens are minted only for a verified loopback server — never sent to a non-local endpoint — and are cached until shortly before their JWT expiry.
+3. A **desktop token** self-issued through Unsloth's own CLI helpers (`unsloth_cli._inference`: `verify_studio_identity` and `_studio_token`), run from the bundled `unsloth_studio` Python venv. Tokens are minted only for a verified loopback server — never sent to a non-local endpoint — and are cached per base URL until shortly before their JWT expiry.
 
-Server discovery honors `UNSLOTH_STUDIO_URL` and defaults to `http://127.0.0.1:8888`. `UNSLOTH_STUDIO_HOME`, `UNSLOTH_HOME`, or `STUDIO_HOME` relocate the Studio home; `UNSLOTH_PYTHON` pins the venv interpreter.
+Server selection honors `UNSLOTH_STUDIO_URL` and defaults to `http://127.0.0.1:8888`; see [How the server is chosen](#how-the-server-is-chosen). `UNSLOTH_STUDIO_HOME`, `UNSLOTH_HOME`, or `STUDIO_HOME` relocate the Studio home; `UNSLOTH_PYTHON` pins the venv interpreter.
 
 ## What's exposed in /model
 
