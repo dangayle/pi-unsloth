@@ -91,6 +91,17 @@ function sitePackagesOf(pythonPath: string): string {
   return path.join(path.dirname(pythonPath), "..", "Lib", "site-packages");
 }
 
+/** node:child_process requires string values; drop undefined entries. */
+export function definedEnv(
+  env: Record<string, string | undefined>,
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (typeof value === "string") result[key] = value;
+  }
+  return result;
+}
+
 /**
  * One-shot: discover the Studio server, verify its identity, and self-issue a
  * desktop token — all through unsloth_cli's own functions.
@@ -116,6 +127,10 @@ export async function mintToken(options: MintOptions): Promise<MintedToken | und
   const spawnFn = options.spawnFn ?? spawn;
   const child = spawnFn(pythonPath, ["-c", script], {
     cwd: site,
+    // Pass the caller's environment through explicitly: unsloth_cli's
+    // find_studio_server() reads UNSLOTH_STUDIO_URL, so a non-default port
+    // only works if the helper process sees it.
+    env: definedEnv(options.env),
     windowsHide: true,
     signal: options.signal,
     timeout: options.timeoutMs,

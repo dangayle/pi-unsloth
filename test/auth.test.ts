@@ -7,6 +7,7 @@ import * as path from "node:path";
 import type { ChildProcess } from "node:child_process";
 import {
   TokenCache,
+  definedEnv,
   findStudioPython,
   mintToken,
   parseJwtExp,
@@ -174,6 +175,27 @@ test("mintToken returns undefined for an aborted operation", async () => {
     spawnFn: spawnReturning({ stdout: "{}" }),
   });
   assert.equal(result, undefined);
+});
+
+test("mintToken passes its environment to the helper process", async () => {
+  let seenEnv: Record<string, string> | undefined;
+  await mintToken({
+    pythonPath: "/fake/python",
+    env: { UNSLOTH_STUDIO_URL: "http://127.0.0.1:8899", UNSET_VALUE: undefined },
+    spawnFn: ((cmd, args, options) => {
+      seenEnv = options.env as Record<string, string>;
+      void cmd;
+      void args;
+      return fakeChild({ stdout: JSON.stringify({ base: "http://127.0.0.1:8899", token: "t" }) });
+    }) as SpawnFn,
+  });
+  // The helper reads UNSLOTH_STUDIO_URL, so a non-default port must reach it.
+  assert.equal(seenEnv?.UNSLOTH_STUDIO_URL, "http://127.0.0.1:8899");
+  assert.equal("UNSET_VALUE" in (seenEnv ?? {}), false);
+});
+
+test("definedEnv drops undefined values", () => {
+  assert.deepEqual(definedEnv({ A: "1", B: undefined }), { A: "1" });
 });
 
 test("resolveAuth prefers a stored API key, then the environment, then minting", async () => {
