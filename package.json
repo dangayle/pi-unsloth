@@ -1,0 +1,43 @@
+{
+  "name": "pi-unsloth",
+  "version": "0.1.0",
+  "description": "Pi coding agent plugin: list, load, and unload local Unsloth models from inside Pi",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "unsloth",
+    "llm",
+    "local-models"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dangayle/pi-unsloth.git"
+  },
+  "files": [
+    "extensions",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test --experimental-strip-types \"test/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "pi": {
+    "extensions": ["./extensions/index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-agent-core": "1.4.0",
+    "@earendil-works/pi-coding-agent": "1.4.0",
+    "@types/node": "^24.0.0",
+    "typebox": "1.4.3",
+    "typescript": "^5.7.0"
+  }
+}
