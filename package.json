@@ -1,6 +1,6 @@
 {
   "name": "pi-unsloth",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pi coding agent plugin: list, load, and unload local Unsloth models from inside Pi",
   "type": "module",
   "keywords": [
@@ -24,7 +24,9 @@
     "typecheck": "tsc --noEmit"
   },
   "pi": {
-    "extensions": ["./extensions/index.ts"]
+    "extensions": [
+      "./extensions/index.ts"
+    ]
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
