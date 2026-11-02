@@ -24,8 +24,12 @@ import {
   UNSLOTH_API_KEY_ENV,
   UNSLOTH_STUDIO_URL_ENV,
   findStudioPython,
+  isMintedToken,
   mintToken,
+  probeStudio,
   resolveAuth,
+  resolveTarget,
+  verifyAccess,
 } from "./auth.ts";
 
 const PROVIDER_NAME = "Unsloth";
@@ -55,7 +59,15 @@ export interface UnslothProviderController {
 
 export function createUnslothProvider(): UnslothProviderController {
   let models: PiChatModelDef[] = [];
-  const tokenCache = new TokenCache(async () => mintToken({ env: process.env }));
+  // The cache is keyed by base URL, so a token minted for one server is never
+  // handed to another when the configured URL changes.
+  const tokenCache = new TokenCache(async () => {
+    const minted = await mintToken({
+      baseUrl: resolveTarget({ env: process.env }).baseUrl,
+      env: process.env,
+    });
+    return isMintedToken(minted) ? minted : undefined;
+  });
 
   const setCatalog = (catalog: readonly PiChatModelDef[]): void => {
     models = [...catalog];
@@ -86,23 +98,30 @@ export function createUnslothProvider(): UnslothProviderController {
             })
           ).trim();
           const apiKey = enteredKey || undefined;
-          // Resolve a working credential before storing it.
+          // Resolve a working credential for this exact URL before storing it.
           const resolved = await resolveAuth({
             serverUrl,
             apiKey,
             env: process.env,
-            mint: () => tokenCache.get(),
+            mint: async (baseUrl) => {
+              const minted = await tokenCache.get(baseUrl);
+              return minted;
+            },
           });
           if (!resolved) {
+            const probe = await probeStudio(serverUrl, { signal: interaction.signal });
             throw new Error(
-              "Could not authenticate to the Unsloth server. Check that Unsloth " +
-                "Studio is running and reachable, or provide an API key.",
+              `Could not authenticate to the Unsloth server: ${probe.detail ?? "no usable credential"}. ` +
+                "Check that Unsloth Studio is running at that URL, or provide an API key.",
             );
           }
-          await new UnslothClient({
+          // Prove the credential is accepted by that exact server before
+          // persisting it, so a wrong port cannot survive into a session.
+          await verifyAccess({
             baseUrl: resolved.auth.baseUrl,
             apiKey: resolved.auth.apiKey,
-          }).listModels({ signal: interaction.signal });
+            signal: interaction.signal,
+          });
           return {
             type: "api_key" as const,
             key: resolved.auth.apiKey,
@@ -111,8 +130,7 @@ export function createUnslothProvider(): UnslothProviderController {
         },
         check: async ({ ctx, credential }) => {
           const serverUrl = storedServerUrl(credential) ?? (await ctx.env(UNSLOTH_STUDIO_URL_ENV));
-          const apiKey =
-            credential?.key ?? (await ctx.env(UNSLOTH_API_KEY_ENV));
+          const apiKey = credential?.key ?? (await ctx.env(UNSLOTH_API_KEY_ENV));
           if (apiKey && apiKey.trim()) {
             return {
               type: "api_key" as const,
@@ -130,9 +148,10 @@ export function createUnslothProvider(): UnslothProviderController {
             serverUrl,
             apiKey: credential?.key,
             env: process.env,
-            mint: () => tokenCache.get(),
+            mint: (baseUrl) => tokenCache.get(baseUrl),
           });
           if (!resolved) return undefined;
+          // The base comes from our deterministic target, never from a helper.
           return {
             auth: { apiKey: resolved.auth.apiKey, baseUrl: inferenceUrl(resolved.auth.baseUrl) },
             env: { ...credential?.env, [UNSLOTH_STUDIO_URL_ENV]: resolved.auth.baseUrl },
@@ -156,11 +175,11 @@ export function createUnslothProvider(): UnslothProviderController {
       }
       if (!context.allowNetwork || context.signal.aborted) return;
       if (context.credential?.type !== "api_key") return;
-      const base = normalizeStudioUrl(
-        storedServerUrl(context.credential) ??
-          process.env[UNSLOTH_STUDIO_URL_ENV] ??
-          DEFAULT_STUDIO_URL,
-      );
+      // The server we talk to is decided here, never by the server itself.
+      const base = resolveTarget({
+        serverUrl: storedServerUrl(context.credential),
+        env: process.env,
+      }).baseUrl;
       const client = new UnslothClient({
         baseUrl: base,
         apiKey: context.credential.key,
