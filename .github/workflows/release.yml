@@ -1,0 +1,35 @@
+name: Release
+
+# Tags are immutable and must be semver: vX.Y.Z matching package.json.
+# A mismatch fails here rather than shipping a tag that lies about its version.
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Tag must be v<package.json version>
+        run: |
+          set -eu
+          tag="${GITHUB_REF_NAME}"
+          version="v$(node -p "require('./package.json').version")"
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Tag '$tag' is not semver. Use vX.Y.Z."
+            exit 1
+          fi
+          if [ "$tag" != "$version" ]; then
+            echo "::error::Tag '$tag' does not match package.json ('$version'). Bump the version first, then tag."
+            exit 1
+          fi
+          echo "Tag $tag matches package.json."
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck

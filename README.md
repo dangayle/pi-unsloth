@@ -13,8 +13,12 @@ No model-management logic is reimplemented: the plugin talks to the running Stud
 ## Install
 
 ```bash
-pi install git:github.com/dangayle/pi-unsloth@v1
+pi install git:github.com/dangayle/pi-unsloth@v0.2.0
 ```
+
+Tags are immutable semver, so pin an exact version. Browse them with
+`git ls-remote --tags https://github.com/dangayle/pi-unsloth` and check
+[CHANGELOG.md](CHANGELOG.md) for what changed.
 
 Or try it for one session:
 
@@ -118,3 +122,17 @@ npm run typecheck # tsc against the pi-ai / pi-coding-agent types
 ```
 
 The REST client, catalog mapping, and auth logic are dependency-free modules (`extensions/unsloth/`) so the test suite never loads pi-ai. CI runs the tests and typecheck on Node 22 and 24.
+
+## Versioning
+
+[Semantic Versioning](https://semver.org/). Tags are `vX.Y.Z`, **immutable**, and must equal the `package.json` version — the [release workflow](.github/workflows/release.yml) fails the build otherwise, so a tag can never misreport its version.
+
+To cut a release: bump the version, update [CHANGELOG.md](CHANGELOG.md), merge the PR, then tag the merge commit.
+
+```bash
+npm version 0.3.0 --no-git-tag-version   # then commit, PR, merge
+git tag -a v0.3.0 -m "v0.3.0"            # on main, after the merge
+git push origin v0.3.0
+```
+
+There is no moving major alias (`v1` and friends): since tags never move, `@vX.Y.Z` always means exactly one commit.
