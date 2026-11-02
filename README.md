@@ -24,8 +24,31 @@ pi --extension ./extensions/index.ts
 
 ## Requirements
 
-- Unsloth Studio installed and running (the desktop app, or `unsloth studio run`).
+- Unsloth Studio installed and running (the desktop app, or a headless server — see below).
 - Pi 1.4+ (Node 22.19+).
+
+## Desktop app, headless, or Core?
+
+The plugin talks to the Unsloth **backend server**, so any mode that serves its REST API works — the desktop app and a headless CLI install are interchangeable:
+
+| Unsloth mode | Works | Notes |
+|---|---|---|
+| Desktop app | ✅ | Default target, `http://127.0.0.1:8888`. |
+| `unsloth studio` / `unsloth studio -p <port>` | ✅ | Same backend, with or without the web UI. |
+| `unsloth studio --api-only` | ✅ | No UI at all; verified end-to-end (see below). |
+| Docker / remote | ✅ | Point `UNSLOTH_STUDIO_URL` at it and pass an API key (`unsloth studio run` prints one). |
+| Unsloth Core (pip library) / in-process CLI inference | ❌ | No HTTP server to attach to. Use Pi's built-in llama.cpp or Ollama support instead. |
+
+### Headless / API-only servers
+
+```bash
+unsloth studio --api-only -p 8899
+UNSLOTH_STUDIO_URL=http://127.0.0.1:8899 pi
+```
+
+A non-default port needs both pieces: `UNSLOTH_STUDIO_URL` tells the plugin where the server is, and the plugin forwards it to Unsloth's own discovery helper so the token it mints matches that server. Off-machine servers additionally need `UNSLOTH_API_KEY`, since the self-issued desktop token is only ever minted for a verified loopback address.
+
+Verified against a headless `unsloth studio --api-only -p 8899` instance: token minting, model listing, load (53s), catalog reporting the model as loaded, a chat completion through `/v1/chat/completions` (with `reasoning_content`), and unload.
 
 ## Usage
 
@@ -66,7 +89,3 @@ npm run typecheck # tsc against the pi-ai / pi-coding-agent types
 ```
 
 The REST client, catalog mapping, and auth logic are dependency-free modules (`extensions/unsloth/`) so the test suite never loads pi-ai. CI runs the tests and typecheck on Node 22 and 24.
-
-## Repository policy
-
-`main` is protected: no direct pushes, changes land through pull requests with a green CI run.
